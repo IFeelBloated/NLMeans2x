@@ -2,10 +2,6 @@
 #include <cstdint>
 #include <cstddef>
 
-constexpr auto operator""_size(unsigned long long Value) {
-	return static_cast<std::size_t>(Value);
-}
-
 constexpr auto operator""_i64(unsigned long long Value) {
 	return static_cast<std::int64_t>(Value);
 }

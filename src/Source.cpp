@@ -1,8 +1,13 @@
 #include <cmath>
-#include <malloc.h>
 #include "VapourSynth.h"
 #include "VSHelper.h"
 #include "Helpers.hpp"
+
+#if defined(_MSC_VER)
+#include <malloc.h>
+#elif defined(__GNUC__) || defined(__GNUG__)
+#include <alloca.h>
+#endif
 
 struct NLMeans2xData final {
 	const VSAPI *vsapi = nullptr;
@@ -12,7 +17,9 @@ struct NLMeans2xData final {
 	decltype(0_i64) a = 0;
 	decltype(0_i64) s = 0;
 	decltype(0.) h = 0.;
+	decltype(0.) sdev = 0.;
 	NLMeans2xData(const VSMap *in, VSMap *out, const VSAPI *api) {
+		constexpr auto ScalingFactor = 199.09020197967370907985363966763;
 		auto Error = 0;
 		vsapi = api;
 		node = vsapi->propGetNode(in, "clip", 0, nullptr);
@@ -30,8 +37,21 @@ struct NLMeans2xData final {
 			Illformed = true;
 			return;
 		}
-
-
+		s = vsapi->propGetInt(in, "s", 0, &Error);
+		if (Error)
+			s = 4;
+		if (s < 0) {
+			vsapi->setError(out, "NLMeans2x: s must be no less than 0!");
+			Illformed = true;
+			return;
+		}
+		h = vsapi->propGetFloat(in, "h", 0, &Error);
+		if (Error)
+			h = 1.6;
+		h /= ScalingFactor;
+		sdev = vsapi->propGetFloat(in, "sdev", 0, &Error);
+		if (Error)
+			sdev = 1.;
 	}
 	NLMeans2xData(NLMeans2xData &&) = delete;
 	NLMeans2xData(const NLMeans2xData &) = delete;
@@ -67,14 +87,23 @@ auto VS_CC nlmeans2xGetFrame(int n, int activationReason, void **instanceData, v
 					decltype(0.) Weight = 0.;
 					NLMeansPixelPack(const float &Value, const float &Reference, NLMeans2xData *Data, std::int64_t Width) {
 						auto CalculateWeight = [&]() {
-							auto SSE = 0., h = Data->h;
+							auto WeightedSSE = 0., GaussianWeightNormalizingConstant = 0., h = Data->h;
 							auto s = Data->s;
 							const auto PatchCursor = FramePointer<float>{ &Value, Width };
 							const auto ReferencePatchCursor = FramePointer<float>{ &Reference, Width };
+							auto CalculateGaussianWeight = [&](auto x, auto y) {
+								auto Variance = std::pow(Data->sdev, 2.);
+								auto SquaredDistance = std::pow(x, 2.) + std::pow(y, 2.);
+								return std::exp(-SquaredDistance / (2. * Variance));
+							};
 							for (auto y = -s; y <= s; ++y)
-								for (auto x = -s; x <= s; ++x)
-									SSE += std::pow(PatchCursor[y][x] - ReferencePatchCursor[y][x], 2.);
-							return std::exp(-SSE / std::pow(h, 2.));
+								for (auto x = -s; x <= s; ++x) {
+									auto GaussianWeight = CalculateGaussianWeight(x, y);
+									WeightedSSE += GaussianWeight * std::pow(PatchCursor[y][x] - ReferencePatchCursor[y][x], 2.);
+									GaussianWeightNormalizingConstant += GaussianWeight;
+								}
+							WeightedSSE /= GaussianWeightNormalizingConstant;
+							return std::exp(-WeightedSSE / std::pow(h, 2.));
 						};
 						this->Value = Value;
 						this->Weight = CalculateWeight();
@@ -109,8 +138,8 @@ auto VS_CC nlmeans2xGetFrame(int n, int activationReason, void **instanceData, v
 				return Evaluate();
 			};
 
-			for (auto y = 16; y < Height - 16; ++y)
-				for (auto x = 16; x < Width - 16; ++x)
+			for (auto y = 12; y < Height - 12; ++y)
+				for (auto x = 12; x < Width - 12; ++x)
 					DestinationPlane[y][x] = static_cast<float>(ProcessPixel(SourcePlane[y][x]));
 
 		};
@@ -146,5 +175,6 @@ VS_EXTERNAL_API(auto) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
 		"a:int:opt;"
 		"s:int:opt;"
 		"h:float:opt;"
+		"sdev:float:opt;"
 		, nlmeans2xCreate, nullptr, plugin);
 }
