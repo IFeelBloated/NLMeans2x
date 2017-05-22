@@ -1,7 +1,7 @@
 project('NLMeans2x',
         'cpp',
         default_options : ['cpp_std=c++14', 'buildtype=release'],
-        license : 'GPL-3.0',
+        license : 'LGPL-3.0',
         version : '1')
 
 # Dependencies
