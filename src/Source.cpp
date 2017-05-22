@@ -123,16 +123,12 @@ auto VS_CC nlmeans2xGetFrame(int n, int activationReason, void **instanceData, v
 							BufferCursor[y][x] = NLMeansPixelPack{ Position[y][x], Pixel, Data, Width };
 				};
 				auto Evaluate = [&]() {
-					auto CalculateWeightSum = [&]() {
-						auto WeightSum = 0.;
-						for (auto i = 0_i64; i < SearchWindowSize; ++i)
-							WeightSum += Buffer[i].Weight;
-						return WeightSum;
-					};
-					auto Value = 0., NormalizingConstant = CalculateWeightSum();
-					for (auto i = 0_i64; i < SearchWindowSize; ++i)
+					auto Value = 0., WeightNormalizingConstant = 0.;
+					for (auto i = 0_i64; i < SearchWindowSize; ++i) {
 						Value += Buffer[i].Value * Buffer[i].Weight;
-					return Value / NormalizingConstant;
+						WeightNormalizingConstant += Buffer[i].Weight;
+					}
+					return Value / WeightNormalizingConstant;
 				};
 				InitalizeBuffer();
 				return Evaluate();
