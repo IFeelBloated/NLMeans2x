@@ -1,6 +1,6 @@
 project('NLMeans2x',
         'cpp',
-        default_options : ['cpp_std=c++17', 'buildtype=release'],
+        default_options : ['cpp_std=c++1z', 'buildtype=release'],
         license : 'LGPL-3.0',
         version : '1')
 
